@@ -225,12 +225,17 @@ describe("document server API", () => {
   });
 
   it("returns 501 for not-yet-implemented global endpoints", async () => {
-    const listRes = await SELF.fetch("http://localhost/document-server/api/documents");
+    const listRes = await SELF.fetch(
+      "http://localhost/document-server/api/documents",
+    );
     expect(listRes.status).toBe(501);
 
-    const searchRes = await SELF.fetch("http://localhost/document-server/api/search", {
-      method: "POST",
-    });
+    const searchRes = await SELF.fetch(
+      "http://localhost/document-server/api/search",
+      {
+        method: "POST",
+      },
+    );
     expect(searchRes.status).toBe(501);
   });
 });

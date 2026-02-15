@@ -4,9 +4,9 @@ import { Doc as YDoc, applyUpdate } from "yjs";
 
 import { upgrade } from "../middleware";
 
+import type { YDurableObjectsAppType } from "../yjs";
 import type { Context, Env } from "hono";
 import type { Doc } from "yjs";
-import type { YDurableObjectsAppType } from "../yjs";
 
 type Selector<E extends Env> = (c: E["Bindings"]) => DurableObjectNamespace;
 
@@ -36,7 +36,11 @@ type DocumentDurableObjectStub = DurableObjectStub & {
 type GetFormat = "base64" | "json" | "text" | "yjs";
 type MutationFormat = "yjs";
 
-const getFormat = (value: string | undefined): GetFormat => {
+const getFormat = (value: string | undefined): GetFormat | undefined => {
+  if (value === undefined) {
+    return "json";
+  }
+
   switch (value) {
     case "base64":
     case "json":
@@ -44,7 +48,7 @@ const getFormat = (value: string | undefined): GetFormat => {
     case "yjs":
       return value;
     default:
-      return "json";
+      return undefined;
   }
 };
 
@@ -62,15 +66,36 @@ const selectFragments = (
   doc: Doc,
   fragmentNames: string[],
 ): Record<string, unknown> => {
-  const json = doc.toJSON() as Record<string, unknown>;
-  if (fragmentNames.length < 1) {
-    return json;
-  }
-
   const filtered: Record<string, unknown> = {};
-  for (const fragmentName of fragmentNames) {
-    if (fragmentName in json) {
-      filtered[fragmentName] = json[fragmentName];
+  const sourceFragments =
+    fragmentNames.length > 0
+      ? fragmentNames
+      : Array.from((doc as { share: Map<string, unknown> }).share.keys());
+
+  const resolveFragment = (fragmentName: string): unknown => {
+    const readers = [
+      () => doc.getXmlFragment(fragmentName),
+      () => doc.getText(fragmentName),
+      () => doc.getArray(fragmentName),
+      () => doc.getMap(fragmentName),
+    ];
+    for (const read of readers) {
+      try {
+        const fragment = read();
+
+        return fragment.toJSON();
+      } catch {
+        // try the next fragment constructor
+      }
+    }
+
+    return undefined;
+  };
+
+  for (const fragmentName of sourceFragments) {
+    const value = resolveFragment(fragmentName);
+    if (value !== undefined) {
+      filtered[fragmentName] = value;
     }
   }
 
@@ -103,7 +128,7 @@ const toText = (payload: Record<string, unknown>): string => {
 };
 
 const getStub = <E extends Env>(
-  c: Context<E>,
+  c: Context,
   selector: Selector<E>,
   identifier: string,
 ): DocumentDurableObjectStub => {
@@ -195,6 +220,9 @@ export const yDocumentServerRoute = <E extends Env>(
     }
 
     const format = getFormat(c.req.query("format"));
+    if (format === undefined) {
+      return c.json({ error: "Unsupported format parameter." }, 400);
+    }
     const update = await stub.getYDoc();
     if (format === "yjs") {
       return new Response(update, {

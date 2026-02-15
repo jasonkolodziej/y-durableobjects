@@ -179,7 +179,7 @@ describe("YTransactionStorageImpl", () => {
 
     it("clears all ydoc keys when clearDocument is called", async () => {
       storage.list.mockResolvedValue(
-        new Map([
+        new Map<string, unknown>([
           [storageKey({ type: "state", name: "doc" }), new Uint8Array([1])],
           [storageKey({ type: "state", name: "exists" }), true],
           [storageKey({ type: "update", name: 1 }), new Uint8Array([2])],

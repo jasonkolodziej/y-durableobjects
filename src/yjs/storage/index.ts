@@ -104,10 +104,8 @@ export class YTransactionStorageImpl implements YTransactionStorage {
     return false;
   }
 
-  markExists(): Promise<void> {
-    return this.storage
-      .put(storageKey({ type: "state", name: "exists" }), true)
-      .then(() => undefined);
+  async markExists(): Promise<void> {
+    await this.storage.put(storageKey({ type: "state", name: "exists" }), true);
   }
 
   clearDocument(): Promise<void> {
