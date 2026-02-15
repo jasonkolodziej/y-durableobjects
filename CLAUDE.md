@@ -31,20 +31,17 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ### Core Components
 
 1. **YDurableObjects** (`src/yjs/index.ts`)
-
    - Main Durable Object class extending Cloudflare's DurableObject
    - Manages WebSocket connections and Yjs document synchronization
    - Handles persistence through YTransactionStorage
    - Provides JS RPC methods: `getYDoc()` and `updateYDoc()`
 
 2. **WSSharedDoc** (`src/yjs/remote/ws-shared-doc.ts`)
-
    - Yjs document wrapper with WebSocket notification support
    - Manages awareness protocol for collaborative features
    - Handles document updates and broadcasts
 
 3. **YTransactionStorage** (`src/yjs/storage/index.ts`)
-
    - Persistence layer for Yjs updates
    - Uses Durable Object storage with transaction support
    - Implements incremental update storage with periodic compaction
@@ -62,13 +59,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ### Development Constraints
 
 1. **Cloudflare Workers Environment**
-
    - Code must be compatible with Workers runtime
    - Uses Cloudflare-specific APIs (DurableObject, WebSocketPair)
    - External imports marked in tsup config: `hono`, `/cloudflare:/`
 
 2. **TypeScript Strict Mode**
-
    - Strict boolean expressions enforced
    - No explicit any allowed
    - Consistent type imports/exports required

@@ -34,6 +34,7 @@ export class YDurableObjects<T extends Env> extends DurableObject<
     transaction: (closure) => this.state.storage.transaction(closure),
   });
   protected sessions = new Map<WebSocket, () => void>();
+  private documentExists = false;
   private awarenessClients = new Set<number>();
 
   constructor(
@@ -46,30 +47,25 @@ export class YDurableObjects<T extends Env> extends DurableObject<
   }
 
   protected async onStart(): Promise<void> {
-    const doc = await this.storage.getYDoc();
-    applyUpdate(this.doc, encodeStateAsUpdate(doc));
+    this.documentExists = await this.storage.exists();
+    if (this.documentExists) {
+      const doc = await this.storage.getYDoc();
+      applyUpdate(this.doc, encodeStateAsUpdate(doc));
+    }
+
+    this.registerDocumentObservers();
 
     for (const ws of this.state.getWebSockets()) {
       this.registerWebSocket(ws);
     }
-
-    this.doc.on("update", async (update) => {
-      await this.storage.storeUpdate(update);
-    });
-    this.doc.awareness.on(
-      "update",
-      async ({ added, removed, updated }: AwarenessChanges) => {
-        for (const client of [...added, ...updated]) {
-          this.awarenessClients.add(client);
-        }
-        for (const client of removed) {
-          this.awarenessClients.delete(client);
-        }
-      },
-    );
+    if (this.sessions.size > 0) {
+      await this.ensureDocumentExists();
+    }
   }
 
-  protected createRoom(roomId: string) {
+  protected async createRoom(roomId: string) {
+    await this.ensureDocumentExists();
+
     const pair = new WebSocketPair();
     const client = pair[0];
     const server = pair[1];
@@ -88,7 +84,70 @@ export class YDurableObjects<T extends Env> extends DurableObject<
     return this.app.request(request, undefined, this.env);
   }
 
+  async hasDocument(): Promise<boolean> {
+    return this.documentExists;
+  }
+
+  async createDocument(update?: Uint8Array): Promise<boolean> {
+    if (this.documentExists) {
+      return false;
+    }
+
+    await this.ensureDocumentExists();
+    if (update !== undefined && update.byteLength > 0) {
+      applyUpdate(this.doc, update);
+      await this.cleanup();
+
+      return true;
+    }
+
+    await this.storage.commit();
+
+    return true;
+  }
+
+  async updateDocument(update: Uint8Array): Promise<boolean> {
+    if (!this.documentExists) {
+      return false;
+    }
+
+    applyUpdate(this.doc, update);
+    await this.cleanup();
+
+    return true;
+  }
+
+  async deleteDocument(): Promise<boolean> {
+    if (!this.documentExists) {
+      return false;
+    }
+
+    const sockets = new Set<WebSocket>([
+      ...this.state.getWebSockets(),
+      ...this.sessions.keys(),
+    ]);
+    for (const ws of sockets) {
+      await this.unregisterWebSocket(ws);
+      try {
+        ws.close(1001, "Document deleted");
+      } catch {
+        // ignore close errors for sockets already closing/closed
+      }
+    }
+
+    this.awarenessClients.clear();
+    this.doc.destroy();
+    this.doc = new WSSharedDoc();
+    this.registerDocumentObservers();
+
+    await this.storage.clearDocument();
+    this.documentExists = false;
+
+    return true;
+  }
+
   async updateYDoc(update: Uint8Array): Promise<void> {
+    await this.ensureDocumentExists();
     this.doc.update(update);
     await this.cleanup();
   }
@@ -142,5 +201,31 @@ export class YDurableObjects<T extends Env> extends DurableObject<
     if (this.sessions.size < 1) {
       await this.storage.commit();
     }
+  }
+
+  private registerDocumentObservers() {
+    this.doc.on("update", async (update) => {
+      await this.storage.storeUpdate(update);
+    });
+    this.doc.awareness.on(
+      "update",
+      async ({ added, removed, updated }: AwarenessChanges) => {
+        for (const client of [...added, ...updated]) {
+          this.awarenessClients.add(client);
+        }
+        for (const client of removed) {
+          this.awarenessClients.delete(client);
+        }
+      },
+    );
+  }
+
+  private async ensureDocumentExists() {
+    if (this.documentExists) {
+      return;
+    }
+
+    await this.storage.markExists();
+    this.documentExists = true;
   }
 }

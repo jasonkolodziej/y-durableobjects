@@ -11,7 +11,7 @@ export interface InternalYDurableObject {
   // private api
 
   onStart(): Promise<void>;
-  createRoom(roomId: string): WebSocket;
+  createRoom(roomId: string): Promise<WebSocket>;
 
   registerWebSocket(ws: WebSocket): void;
   unregisterWebSocket(ws: WebSocket): void;
@@ -25,4 +25,8 @@ export interface InternalYDurableObject {
 
   getYDoc(): Promise<Uint8Array>;
   updateYDoc(update: Uint8Array): Promise<void>;
+  hasDocument(): Promise<boolean>;
+  createDocument(update?: Uint8Array): Promise<boolean>;
+  updateDocument(update: Uint8Array): Promise<boolean>;
+  deleteDocument(): Promise<boolean>;
 }

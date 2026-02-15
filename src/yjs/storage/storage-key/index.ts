@@ -5,9 +5,11 @@ export type Key =
     }
   | {
       type: "state";
-      name: "bytes" | "doc" | "count";
+      name: "bytes" | "doc" | "count" | "exists";
     };
 
+export const Y_DOC_STORAGE_PREFIX = "ydoc:";
+
 export const storageKey = (key: Key) => {
-  return `ydoc:${key.type}:${key.name ?? ""}`;
+  return `${Y_DOC_STORAGE_PREFIX}${key.type}:${key.name ?? ""}`;
 };
