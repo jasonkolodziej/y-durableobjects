@@ -68,6 +68,45 @@ describe("YDurableObjects", () => {
     });
   });
 
+  it("tracks document existence lifecycle", async () => {
+    const id = env.Y_DURABLE_OBJECTS.newUniqueId();
+    const stub = env.Y_DURABLE_OBJECTS.get(id);
+
+    await runInDurableObject(stub, async (instance: InternalYDurableObject) => {
+      await expect(instance.hasDocument()).resolves.toBe(false);
+      await expect(instance.createDocument()).resolves.toBe(true);
+      await expect(instance.hasDocument()).resolves.toBe(true);
+      await expect(instance.createDocument()).resolves.toBe(false);
+    });
+  });
+
+  it("updates document from raw yjs update", async () => {
+    const id = env.Y_DURABLE_OBJECTS.newUniqueId();
+    const stub = env.Y_DURABLE_OBJECTS.get(id);
+
+    await runInDurableObject(stub, async (instance: InternalYDurableObject) => {
+      const message = createYDocMessage("raw update");
+      await instance.createDocument();
+      await expect(instance.updateDocument(message)).resolves.toBe(true);
+
+      const state = await instance.getYDoc();
+      expect(state).toEqual(message);
+    });
+  });
+
+  it("deletes documents and resets existence", async () => {
+    const id = env.Y_DURABLE_OBJECTS.newUniqueId();
+    const stub = env.Y_DURABLE_OBJECTS.get(id);
+
+    await runInDurableObject(stub, async (instance: InternalYDurableObject) => {
+      const message = createYDocMessage("to-delete");
+      await instance.createDocument(message);
+      await expect(instance.deleteDocument()).resolves.toBe(true);
+      await expect(instance.hasDocument()).resolves.toBe(false);
+      await expect(instance.deleteDocument()).resolves.toBe(false);
+    });
+  });
+
   it("handles WebSocket messages correctly", async () => {
     const id = env.Y_DURABLE_OBJECTS.newUniqueId();
     const stub = env.Y_DURABLE_OBJECTS.get(id);

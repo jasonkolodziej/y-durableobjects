@@ -148,6 +148,55 @@ describe("YTransactionStorageImpl", () => {
     });
   });
 
+  describe("Document lifecycle metadata", () => {
+    it("returns false when the document does not exist", async () => {
+      storage.get.mockResolvedValue(undefined);
+      storage.list.mockResolvedValue(new Map());
+
+      const yStorage = new YTransactionStorageImpl(storage);
+      await expect(yStorage.exists()).resolves.toBe(false);
+    });
+
+    it("returns true and backfills exists flag when snapshot is present", async () => {
+      storage.get.mockImplementation((key) => {
+        switch (key) {
+          case storageKey({ type: "state", name: "exists" }):
+            return Promise.resolve(undefined);
+          case storageKey({ type: "state", name: "doc" }):
+            return Promise.resolve(new Uint8Array([1, 2, 3]));
+          default:
+            return Promise.resolve(undefined);
+        }
+      });
+
+      const yStorage = new YTransactionStorageImpl(storage);
+      await expect(yStorage.exists()).resolves.toBe(true);
+      expect(storage.put).toHaveBeenCalledWith(
+        storageKey({ type: "state", name: "exists" }),
+        true,
+      );
+    });
+
+    it("clears all ydoc keys when clearDocument is called", async () => {
+      storage.list.mockResolvedValue(
+        new Map([
+          [storageKey({ type: "state", name: "doc" }), new Uint8Array([1])],
+          [storageKey({ type: "state", name: "exists" }), true],
+          [storageKey({ type: "update", name: 1 }), new Uint8Array([2])],
+        ]),
+      );
+
+      const yStorage = new YTransactionStorageImpl(storage);
+      await yStorage.clearDocument();
+
+      expect(storage.delete).toHaveBeenCalledWith([
+        storageKey({ type: "state", name: "doc" }),
+        storageKey({ type: "state", name: "exists" }),
+        storageKey({ type: "update", name: 1 }),
+      ]);
+    });
+  });
+
   describe("commit method", () => {
     it("commits all updates and clears all related storage keys", async () => {
       const yStorage = new YTransactionStorageImpl(storage);

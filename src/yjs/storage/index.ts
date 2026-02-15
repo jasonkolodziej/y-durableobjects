@@ -1,11 +1,14 @@
 import { Doc, applyUpdate, encodeStateAsUpdate } from "yjs";
 
-import { storageKey } from "./storage-key";
+import { storageKey, Y_DOC_STORAGE_PREFIX } from "./storage-key";
 
 import type { TransactionStorage } from "./type";
 
 export interface YTransactionStorage {
   getYDoc(): Promise<Doc>;
+  exists(): Promise<boolean>;
+  markExists(): Promise<void>;
+  clearDocument(): Promise<void>;
   storeUpdate(update: Uint8Array): Promise<void>;
   commit(): Promise<void>;
 }
@@ -63,8 +66,63 @@ export class YTransactionStorageImpl implements YTransactionStorage {
     return doc;
   }
 
+  async exists(): Promise<boolean> {
+    const explicit = await this.storage.get<boolean>(
+      storageKey({ type: "state", name: "exists" }),
+    );
+    if (explicit === true) {
+      return true;
+    }
+
+    const snapshot = await this.storage.get<Uint8Array>(
+      storageKey({ type: "state", name: "doc" }),
+    );
+    if (snapshot !== undefined) {
+      await this.markExists();
+
+      return true;
+    }
+
+    const count = await this.storage.get<number>(
+      storageKey({ type: "state", name: "count" }),
+    );
+    if ((count ?? 0) > 0) {
+      await this.markExists();
+
+      return true;
+    }
+
+    const updates = await this.storage.list<Uint8Array>({
+      prefix: storageKey({ type: "update" }),
+    });
+    if (updates.size > 0) {
+      await this.markExists();
+
+      return true;
+    }
+
+    return false;
+  }
+
+  markExists(): Promise<void> {
+    return this.storage
+      .put(storageKey({ type: "state", name: "exists" }), true)
+      .then(() => undefined);
+  }
+
+  clearDocument(): Promise<void> {
+    return this.storage.transaction(async (tx) => {
+      const data = await tx.list({ prefix: Y_DOC_STORAGE_PREFIX });
+      if (data.size > 0) {
+        await tx.delete(Array.from(data.keys()));
+      }
+    });
+  }
+
   storeUpdate(update: Uint8Array): Promise<void> {
     return this.storage.transaction(async (tx) => {
+      await tx.put(storageKey({ type: "state", name: "exists" }), true);
+
       const bytes =
         (await tx.get<number>(storageKey({ type: "state", name: "bytes" }))) ??
         0;
@@ -100,6 +158,7 @@ export class YTransactionStorageImpl implements YTransactionStorage {
     const update = encodeStateAsUpdate(doc);
 
     await tx.delete(Array.from(data.keys()));
+    await tx.put(storageKey({ type: "state", name: "exists" }), true);
     await tx.put(storageKey({ type: "state", name: "bytes" }), 0);
     await tx.put(storageKey({ type: "state", name: "count" }), 0);
     await tx.put(storageKey({ type: "state", name: "doc" }), update);

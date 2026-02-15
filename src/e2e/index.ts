@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import { hc } from "hono/client";
 import { fromUint8Array } from "js-base64";
 
-import { yRoute } from "..";
+import { yDocumentServerRoute, yRoute } from "..";
 import { upgrade } from "../middleware";
 import { YDurableObjects } from "../yjs";
 
@@ -19,6 +19,10 @@ const route = app
   .route(
     "/shorthand",
     yRoute<Env>((env) => env.Y_DURABLE_OBJECTS),
+  )
+  .route(
+    "/document-server",
+    yDocumentServerRoute<Env>((env) => env.Y_DURABLE_OBJECTS),
   )
   .get("/rooms/:id", upgrade(), async (c) => {
     const roomId = c.req.param("id");
